@@ -5,7 +5,7 @@ from datetime import date, datetime
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.db import get_db, init_db, seed_db
@@ -88,6 +88,20 @@ def validate_expense_form(form):
 
     values["amount"] = round(amount, 2)
     return values, None
+
+
+def render_expense_form(heading, submit_label, action, values, error=None):
+    """Render expense_form.html, shared by the add and edit pages."""
+    return render_template(
+        "expense_form.html",
+        heading=heading,
+        submit_label=submit_label,
+        action=action,
+        categories=CATEGORIES,
+        values=values,
+        error=error,
+        today=date.today().isoformat(),
+    )
 
 
 # ------------------------------------------------------------------ #
@@ -271,15 +285,8 @@ def profile():
 @login_required
 def add_expense():
     def show_form(values, error=None):
-        return render_template(
-            "expense_form.html",
-            heading="Add an expense",
-            submit_label="Add expense",
-            action=url_for("add_expense"),
-            categories=CATEGORIES,
-            values=values,
-            error=error,
-            today=date.today().isoformat(),
+        return render_expense_form(
+            "Add an expense", "Add expense", url_for("add_expense"), values, error
         )
 
     if request.method == "GET":
@@ -308,10 +315,61 @@ def add_expense():
     return redirect(url_for("profile"))
 
 
-@app.route("/expenses/<int:id>/edit")
+@app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_expense(id):
-    return "Edit expense — coming in Step 8"
+    conn = get_db()
+    # Filtering by user_id means other users' expenses look exactly like
+    # missing ones: both return 404, so ids can't be probed.
+    expense = conn.execute(
+        "SELECT amount, category, date, description FROM expenses "
+        "WHERE id = ? AND user_id = ?",
+        (id, session["user_id"]),
+    ).fetchone()
+    if expense is None:
+        conn.close()
+        abort(404)
+
+    def show_form(values, error=None):
+        return render_expense_form(
+            "Edit expense",
+            "Save changes",
+            url_for("edit_expense", id=id),
+            values,
+            error,
+        )
+
+    if request.method == "GET":
+        conn.close()
+        return show_form({
+            "amount": f"{expense['amount']:.2f}",
+            "category": expense["category"],
+            "date": expense["date"],
+            "description": expense["description"] or "",
+        })
+
+    values, error = validate_expense_form(request.form)
+    if error:
+        conn.close()
+        return show_form(values, error)
+
+    conn.execute(
+        "UPDATE expenses SET amount = ?, category = ?, date = ?, description = ? "
+        "WHERE id = ? AND user_id = ?",
+        (
+            values["amount"],
+            values["category"],
+            values["date"],
+            values["description"] or None,
+            id,
+            session["user_id"],
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Updated expense: {format_inr(values['amount'])} for {values['category']}.")
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/delete")

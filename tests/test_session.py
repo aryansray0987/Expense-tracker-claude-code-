@@ -30,10 +30,15 @@ def test_protected_pages_redirect_to_login_when_signed_out(client, url):
 
 
 @pytest.mark.parametrize("url", PROTECTED_URLS)
-def test_protected_pages_load_when_signed_in(client, register, url):
+def test_protected_pages_do_not_redirect_when_signed_in(client, register, url):
     register()
 
-    assert client.get(url).status_code == 200
+    response = client.get(url)
+
+    # Expense 1 doesn't exist for a new user, so /edit may 404, but it must
+    # never bounce a signed-in user back to the login page.
+    assert response.headers.get("Location") != "/login"
+    assert response.status_code in (200, 404)
 
 
 def test_after_logout_protected_pages_redirect_again(client, register):

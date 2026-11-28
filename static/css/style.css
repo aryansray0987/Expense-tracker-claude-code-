@@ -886,6 +886,25 @@ select.form-input { cursor: pointer; }
 
 .nowrap { white-space: nowrap; }
 
+.row-actions { text-align: right; white-space: nowrap; }
+
+.row-actions a {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--accent);
+}
+
+.row-actions a:hover { text-decoration: underline; }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
 .category-tag {
     display: inline-block;
     background: var(--accent-light);
