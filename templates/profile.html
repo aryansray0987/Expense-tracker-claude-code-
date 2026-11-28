@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.name }} — Spendly{% endblock %}
+
+{% block content %}
+
+<section class="profile-section">
+    <div class="profile-container">
+
+        <header class="profile-header">
+            <div>
+                <h1 class="profile-title">{{ user.name }}</h1>
+                <p class="profile-meta">
+                    {{ user.email }} · Member since {{ user.created_at | pretty_date("%b %Y") }}
+                </p>
+            </div>
+            <a href="{{ url_for('add_expense') }}" class="btn-primary">+ Add expense</a>
+        </header>
+
+        <div class="profile-stats">
+            <div class="profile-stat">
+                <span class="profile-stat-label">Total spent</span>
+                <span class="profile-stat-value">{{ total | inr }}</span>
+            </div>
+            <div class="profile-stat">
+                <span class="profile-stat-label">Expenses</span>
+                <span class="profile-stat-value">{{ count }}</span>
+            </div>
+            <div class="profile-stat">
+                <span class="profile-stat-label">Top category</span>
+                <span class="profile-stat-value">
+                    {{ categories[0].category if categories else "—" }}
+                </span>
+                {% if categories %}
+                <span class="profile-stat-sub">{{ categories[0].total | inr }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if count == 0 %}
+
+        <div class="profile-card profile-empty">
+            <h2 class="profile-card-title">No expenses yet</h2>
+            <p>Add your first expense to see your spending summary here.</p>
+            <a href="{{ url_for('add_expense') }}" class="btn-primary">+ Add expense</a>
+        </div>
+
+        {% else %}
+
+        <div class="profile-grid">
+
+            <div class="profile-card">
+                <h2 class="profile-card-title">Spending by category</h2>
+                <div class="category-list">
+                    {% for cat in categories %}
+                    {% set pct = (cat.total / total * 100) if total else 0 %}
+                    <div class="category-row">
+                        <div class="category-row-top">
+                            <span class="category-name">{{ cat.category }}</span>
+                            <span class="category-amount">{{ cat.total | inr }}</span>
+                        </div>
+                        <div class="category-track">
+                            <div class="category-bar category-bar-{{ loop.index0 % 5 }}"
+                                 style="width: {{ '%.1f' % pct }}%"></div>
+                        </div>
+                        <span class="category-pct">{{ '%.0f' % pct }}% · {{ cat.count }} expense{{ "s" if cat.count != 1 }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="profile-card">
+                <h2 class="profile-card-title">Recent expenses</h2>
+                <div class="table-scroll">
+                    <table class="expense-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Category</th>
+                                <th class="num">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in recent %}
+                            <tr>
+                                <td class="nowrap">{{ e.date | pretty_date }}</td>
+                                <td>{{ e.description or "—" }}</td>
+                                <td><span class="category-tag">{{ e.category }}</span></td>
+                                <td class="num nowrap">{{ e.amount | inr }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if count > recent | length %}
+                <p class="table-note">Showing your {{ recent | length }} most recent of {{ count }} expenses.</p>
+                {% endif %}
+            </div>
+
+        </div>
+
+        {% endif %}
+
+    </div>
+</section>
+
+{% endblock %}

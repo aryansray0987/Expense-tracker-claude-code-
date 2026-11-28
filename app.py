@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from datetime import datetime
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -29,6 +30,35 @@ def login_required(view):
         return view(*args, **kwargs)
 
     return wrapped
+
+
+# ------------------------------------------------------------------ #
+# Template filters                                                    #
+# ------------------------------------------------------------------ #
+
+@app.template_filter("inr")
+def format_inr(amount):
+    """Format a number as rupees with Indian digit grouping: 123456.5 -> ₹1,23,456.50"""
+    rupees, paise = f"{abs(amount):.2f}".split(".")
+    if len(rupees) > 3:
+        head, tail = rupees[:-3], rupees[-3:]
+        groups = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        groups.insert(0, head)
+        rupees = ",".join(groups) + "," + tail
+    sign = "-" if amount < 0 else ""
+    return f"{sign}₹{rupees}.{paise}"
+
+
+@app.template_filter("pretty_date")
+def pretty_date(value, fmt="%d %b %Y"):
+    """'2026-11-01' (or '2026-11-01 10:00:00') -> '01 Nov 2026'"""
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").strftime(fmt)
+    except (TypeError, ValueError):
+        return value
 
 
 # ------------------------------------------------------------------ #
@@ -125,15 +155,58 @@ def logout():
     return redirect(url_for("landing"))
 
 
+@app.route("/profile")
+@login_required
+def profile():
+    user_id = session["user_id"]
+    conn = get_db()
+
+    user = conn.execute(
+        "SELECT name, email, created_at FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if user is None:
+        # The session points at a user that no longer exists
+        # (e.g. the database file was deleted). Start over.
+        conn.close()
+        session.clear()
+        return redirect(url_for("login"))
+
+    totals = conn.execute(
+        "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total "
+        "FROM expenses WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+
+    categories = conn.execute(
+        "SELECT category, SUM(amount) AS total, COUNT(*) AS count "
+        "FROM expenses WHERE user_id = ? "
+        "GROUP BY category ORDER BY total DESC",
+        (user_id,),
+    ).fetchall()
+
+    recent = conn.execute(
+        "SELECT id, amount, category, date, description "
+        "FROM expenses WHERE user_id = ? "
+        "ORDER BY date DESC, id DESC LIMIT 10",
+        (user_id,),
+    ).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "profile.html",
+        user=user,
+        total=totals["total"],
+        count=totals["count"],
+        categories=categories,
+        recent=recent,
+    )
+
+
 # ------------------------------------------------------------------ #
 # Placeholder routes — students will implement these                  #
 # (already protected: signed-out visitors are sent to /login)        #
 # ------------------------------------------------------------------ #
-
-@app.route("/profile")
-@login_required
-def profile():
-    return "Profile page — coming in Step 4"
 
 
 @app.route("/expenses/add")
