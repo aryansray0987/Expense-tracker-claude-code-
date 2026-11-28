@@ -326,16 +326,61 @@ def get_next_param():
 PER_PAGE = 20
 
 
+def parse_expense_filters(args):
+    """Read the /expenses filters from the query string.
+
+    Returns {"category", "start", "end"}, each a valid value or None.
+    Invalid values are ignored rather than raising errors, because they
+    usually come from a hand-edited URL. A reversed date range is swapped.
+    """
+    def valid_date(value):
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+        except (TypeError, ValueError):
+            return None
+
+    category = args.get("category", "").strip()
+    start = valid_date(args.get("start", "").strip())
+    end = valid_date(args.get("end", "").strip())
+    if start and end and start > end:  # ISO dates compare correctly as strings
+        start, end = end, start
+
+    return {
+        "category": category if category in CATEGORIES else None,
+        "start": start,
+        "end": end,
+    }
+
+
 @app.route("/expenses")
 @login_required
 def list_expenses():
     user_id = session["user_id"]
+    filters = parse_expense_filters(request.args)
+
+    # Build the WHERE clause from fixed SQL pieces only; user values go in params.
+    where, params = ["user_id = ?"], [user_id]
+    if filters["category"]:
+        where.append("category = ?")
+        params.append(filters["category"])
+    if filters["start"]:
+        where.append("date >= ?")
+        params.append(filters["start"])
+    if filters["end"]:
+        where.append("date <= ?")
+        params.append(filters["end"])
+    where_sql = " AND ".join(where)
+
     conn = get_db()
 
+    all_count = conn.execute(
+        "SELECT COUNT(*) FROM expenses WHERE user_id = ?", (user_id,)
+    ).fetchone()[0]
+
     totals = conn.execute(
-        "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total "
-        "FROM expenses WHERE user_id = ?",
-        (user_id,),
+        f"SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total "
+        f"FROM expenses WHERE {where_sql}",
+        params,
     ).fetchone()
 
     pages = max(1, math.ceil(totals["count"] / PER_PAGE))
@@ -343,22 +388,32 @@ def list_expenses():
     page = min(max(request.args.get("page", 1, type=int), 1), pages)
 
     expenses = conn.execute(
-        "SELECT id, amount, category, date, description "
-        "FROM expenses WHERE user_id = ? "
-        "ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
-        (user_id, PER_PAGE, (page - 1) * PER_PAGE),
+        f"SELECT id, amount, category, date, description "
+        f"FROM expenses WHERE {where_sql} "
+        f"ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
+        params + [PER_PAGE, (page - 1) * PER_PAGE],
     ).fetchall()
     conn.close()
+
+    def page_url(n):
+        # Keep the active filters in every link; url_for drops None values.
+        return url_for("list_expenses", page=n if n > 1 else None, **filters)
 
     return render_template(
         "expenses.html",
         expenses=expenses,
         count=totals["count"],
         total=totals["total"],
+        all_count=all_count,
+        filters=filters,
+        filtered=any(filters.values()),
+        categories=CATEGORIES,
         page=page,
         pages=pages,
         first_index=(page - 1) * PER_PAGE + 1,
-        back_url=url_for("list_expenses", page=page) if page > 1 else url_for("list_expenses"),
+        prev_url=page_url(page - 1) if page > 1 else None,
+        next_url=page_url(page + 1) if page < pages else None,
+        back_url=page_url(page),
     )
 
 

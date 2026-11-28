@@ -78,7 +78,7 @@ def test_paginates(client, register):
 
     assert "21–25 of 25" in page2 and "Page 2 of 2" in page2
     assert ">Item 5<" in page2 and ">Item 25<" not in page2
-    assert 'href="/expenses?page=1"' in page2
+    assert 'href="/expenses" class="btn-ghost" rel="prev"' in page2  # page 1 has a clean URL
 
 
 @pytest.mark.parametrize("page, expected", [("0", "Page 1 of 2"), ("-3", "Page 1 of 2"),
