@@ -1,6 +1,12 @@
 from flask import Flask, render_template
 
+from database.db import init_db, seed_db
+
 app = Flask(__name__)
+
+# Create tables (if missing) and add sample data on startup.
+init_db()
+seed_db()
 
 
 # ------------------------------------------------------------------ #
