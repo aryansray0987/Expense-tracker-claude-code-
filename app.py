@@ -15,6 +15,9 @@ load_dotenv()  # read variables from .env into os.environ
 app = Flask(__name__)
 # Signs the session cookie. Set SECRET_KEY in .env; the fallback is for local dev only.
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
+# Don't send the session cookie on form POSTs from other websites, so a
+# malicious page can't submit forms (like delete) as the signed-in user.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # Create tables (if missing) and add sample data on startup.
 init_db()
@@ -90,7 +93,7 @@ def validate_expense_form(form):
     return values, None
 
 
-def render_expense_form(heading, submit_label, action, values, error=None):
+def render_expense_form(heading, submit_label, action, values, error=None, delete_url=None):
     """Render expense_form.html, shared by the add and edit pages."""
     return render_template(
         "expense_form.html",
@@ -101,6 +104,7 @@ def render_expense_form(heading, submit_label, action, values, error=None):
         values=values,
         error=error,
         today=date.today().isoformat(),
+        delete_url=delete_url,
     )
 
 
@@ -276,9 +280,25 @@ def profile():
 
 
 # ------------------------------------------------------------------ #
-# Placeholder routes — students will implement these                  #
-# (already protected: signed-out visitors are sent to /login)        #
+# Expenses (all routes require a signed-in user)                      #
 # ------------------------------------------------------------------ #
+
+
+def get_own_expense_or_404(conn, expense_id):
+    """Fetch an expense owned by the signed-in user, or abort with 404.
+
+    Filtering by user_id means other users' expenses look exactly like
+    missing ones: both return 404, so ids can't be probed.
+    """
+    expense = conn.execute(
+        "SELECT id, amount, category, date, description FROM expenses "
+        "WHERE id = ? AND user_id = ?",
+        (expense_id, session["user_id"]),
+    ).fetchone()
+    if expense is None:
+        conn.close()
+        abort(404)
+    return expense
 
 
 @app.route("/expenses/add", methods=["GET", "POST"])
@@ -319,16 +339,7 @@ def add_expense():
 @login_required
 def edit_expense(id):
     conn = get_db()
-    # Filtering by user_id means other users' expenses look exactly like
-    # missing ones: both return 404, so ids can't be probed.
-    expense = conn.execute(
-        "SELECT amount, category, date, description FROM expenses "
-        "WHERE id = ? AND user_id = ?",
-        (id, session["user_id"]),
-    ).fetchone()
-    if expense is None:
-        conn.close()
-        abort(404)
+    expense = get_own_expense_or_404(conn, id)
 
     def show_form(values, error=None):
         return render_expense_form(
@@ -337,6 +348,7 @@ def edit_expense(id):
             url_for("edit_expense", id=id),
             values,
             error,
+            delete_url=url_for("delete_expense", id=id),
         )
 
     if request.method == "GET":
@@ -372,10 +384,28 @@ def edit_expense(id):
     return redirect(url_for("profile"))
 
 
-@app.route("/expenses/<int:id>/delete")
+@app.route("/expenses/<int:id>/delete", methods=["GET", "POST"])
 @login_required
 def delete_expense(id):
-    return "Delete expense — coming in Step 9"
+    conn = get_db()
+    expense = get_own_expense_or_404(conn, id)
+
+    # GET only shows a confirmation page; nothing is deleted until the
+    # user submits its form. Deleting on GET would let link prefetching
+    # or a link on another site remove data.
+    if request.method == "GET":
+        conn.close()
+        return render_template("delete_expense.html", expense=expense)
+
+    conn.execute(
+        "DELETE FROM expenses WHERE id = ? AND user_id = ?",
+        (id, session["user_id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Deleted {format_inr(expense['amount'])} for {expense['category']}.")
+    return redirect(url_for("profile"))
 
 
 if __name__ == "__main__":
