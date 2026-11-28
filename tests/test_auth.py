@@ -30,8 +30,9 @@ def test_register_normalizes_email(register):
     assert count == 1
 
 
-def test_register_rejects_duplicate_email(register):
+def test_register_rejects_duplicate_email(client, register):
     register()
+    client.get("/logout")  # registering signs you in; sign out to try again
     response = register(name="Someone Else")
 
     assert response.status_code == 200
