@@ -1,10 +1,11 @@
+import math
 import os
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from functools import wraps
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.db import get_db, init_db, seed_db
@@ -30,6 +31,63 @@ def login_required(view):
         return view(*args, **kwargs)
 
     return wrapped
+
+
+# ------------------------------------------------------------------ #
+# Expense form validation                                             #
+# ------------------------------------------------------------------ #
+
+CATEGORIES = [
+    "Food",
+    "Transport",
+    "Bills",
+    "Shopping",
+    "Entertainment",
+    "Health",
+    "Education",
+    "Other",
+]
+
+MAX_AMOUNT = 10_000_000  # ₹1 crore — guards against typos like an extra zero or five
+MAX_DESCRIPTION = 200
+
+
+def validate_expense_form(form):
+    """Check submitted expense fields.
+
+    Returns (values, error). `values` always holds what the user typed, so the
+    form can be refilled; `error` is None when everything is valid, and then
+    values["amount"] is a float rounded to paise.
+    """
+    values = {
+        "amount": form.get("amount", "").strip(),
+        "category": form.get("category", "").strip(),
+        "date": form.get("date", "").strip(),
+        "description": form.get("description", "").strip(),
+    }
+
+    try:
+        amount = float(values["amount"])
+    except ValueError:
+        return values, "Please enter a valid amount."
+    if not math.isfinite(amount) or amount <= 0:  # float() accepts "nan" and "inf"
+        return values, "Amount must be greater than zero."
+    if amount > MAX_AMOUNT:
+        return values, "Amount is too large."
+
+    if values["category"] not in CATEGORIES:
+        return values, "Please choose a category."
+
+    try:
+        datetime.strptime(values["date"], "%Y-%m-%d")
+    except ValueError:
+        return values, "Please enter a valid date."
+
+    if len(values["description"]) > MAX_DESCRIPTION:
+        return values, f"Description must be {MAX_DESCRIPTION} characters or fewer."
+
+    values["amount"] = round(amount, 2)
+    return values, None
 
 
 # ------------------------------------------------------------------ #
@@ -209,10 +267,45 @@ def profile():
 # ------------------------------------------------------------------ #
 
 
-@app.route("/expenses/add")
+@app.route("/expenses/add", methods=["GET", "POST"])
 @login_required
 def add_expense():
-    return "Add expense — coming in Step 7"
+    def show_form(values, error=None):
+        return render_template(
+            "expense_form.html",
+            heading="Add an expense",
+            submit_label="Add expense",
+            action=url_for("add_expense"),
+            categories=CATEGORIES,
+            values=values,
+            error=error,
+            today=date.today().isoformat(),
+        )
+
+    if request.method == "GET":
+        return show_form({"date": date.today().isoformat()})
+
+    values, error = validate_expense_form(request.form)
+    if error:
+        return show_form(values, error)
+
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, category, date, description) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (
+            session["user_id"],
+            values["amount"],
+            values["category"],
+            values["date"],
+            values["description"] or None,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    flash(f"Added {format_inr(values['amount'])} for {values['category']}.")
+    return redirect(url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/edit")
