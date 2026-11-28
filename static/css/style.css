@@ -967,6 +967,52 @@ select.form-input { cursor: pointer; }
     color: var(--ink-faint);
 }
 
+.table-note a { color: var(--accent); font-weight: 500; }
+.table-note a:hover { text-decoration: underline; }
+
+.card-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.card-title-row .profile-card-title { margin-bottom: 0; }
+
+.card-link {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+.card-link:hover { text-decoration: underline; }
+
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.pagination .btn-ghost { padding: 0.45rem 1rem; font-size: 0.85rem; }
+
+.pagination .is-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.pagination-info {
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+}
+
 /* ------------------------------------------------------------------ */
 /* Responsive                                                          */
 /* ------------------------------------------------------------------ */

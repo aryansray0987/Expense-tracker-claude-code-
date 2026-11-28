@@ -58,7 +58,7 @@
         </div>
 
         <p class="auth-switch">
-            <a href="{{ url_for('profile') }}">← Back to profile</a>
+            <a href="{{ back_url }}">← Back</a>
             {% if delete_url %}
             <span class="auth-switch-sep">·</span>
             <a href="{{ delete_url }}" class="link-danger">Delete this expense</a>

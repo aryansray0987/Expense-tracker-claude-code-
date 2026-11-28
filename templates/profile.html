@@ -70,38 +70,18 @@
             </div>
 
             <div class="profile-card">
-                <h2 class="profile-card-title">Recent expenses</h2>
-                <div class="table-scroll">
-                    <table class="expense-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Category</th>
-                                <th class="num">Amount</th>
-                                <th><span class="visually-hidden">Actions</span></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for e in recent %}
-                            <tr>
-                                <td class="nowrap">{{ e.date | pretty_date }}</td>
-                                <td>{{ e.description or "—" }}</td>
-                                <td><span class="category-tag">{{ e.category }}</span></td>
-                                <td class="num nowrap">{{ e.amount | inr }}</td>
-                                <td class="row-actions">
-                                    <a href="{{ url_for('edit_expense', id=e.id) }}"
-                                       aria-label="Edit {{ e.description or e.category }} expense">Edit</a>
-                                    <a href="{{ url_for('delete_expense', id=e.id) }}" class="link-danger"
-                                       aria-label="Delete {{ e.description or e.category }} expense">Delete</a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="card-title-row">
+                    <h2 class="profile-card-title">Recent expenses</h2>
+                    <a href="{{ url_for('list_expenses') }}" class="card-link">View all →</a>
                 </div>
+                {% with expenses=recent, return_to=none %}
+                {% include "_expense_table.html" %}
+                {% endwith %}
                 {% if count > recent | length %}
-                <p class="table-note">Showing your {{ recent | length }} most recent of {{ count }} expenses.</p>
+                <p class="table-note">
+                    Showing your {{ recent | length }} most recent of {{ count }} expenses.
+                    <a href="{{ url_for('list_expenses') }}">See all {{ count }}</a>
+                </p>
                 {% endif %}
             </div>
 

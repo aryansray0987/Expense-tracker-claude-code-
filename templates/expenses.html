@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}All expenses — Spendly{% endblock %}
+
+{% block content %}
+
+<section class="profile-section">
+    <div class="profile-container">
+
+        <header class="profile-header">
+            <div>
+                <h1 class="profile-title">All expenses</h1>
+                <p class="profile-meta">
+                    {{ count }} expense{{ "s" if count != 1 }} · {{ total | inr }} in total
+                </p>
+            </div>
+            <a href="{{ url_for('add_expense', next=back_url) }}" class="btn-primary">+ Add expense</a>
+        </header>
+
+        {% if count == 0 %}
+
+        <div class="profile-card profile-empty">
+            <h2 class="profile-card-title">No expenses yet</h2>
+            <p>Expenses you add will be listed here.</p>
+            <a href="{{ url_for('add_expense', next=back_url) }}" class="btn-primary">+ Add expense</a>
+        </div>
+
+        {% else %}
+
+        <div class="profile-card">
+            {% with return_to=back_url %}
+            {% include "_expense_table.html" %}
+            {% endwith %}
+
+            {% if pages > 1 %}
+            <nav class="pagination" aria-label="Pages">
+                {% if page > 1 %}
+                <a href="{{ url_for('list_expenses', page=page - 1) }}" class="btn-ghost" rel="prev">← Newer</a>
+                {% else %}
+                <span class="btn-ghost is-disabled" aria-hidden="true">← Newer</span>
+                {% endif %}
+
+                <span class="pagination-info">
+                    {{ first_index }}–{{ first_index + expenses | length - 1 }} of {{ count }}
+                    · Page {{ page }} of {{ pages }}
+                </span>
+
+                {% if page < pages %}
+                <a href="{{ url_for('list_expenses', page=page + 1) }}" class="btn-ghost" rel="next">Older →</a>
+                {% else %}
+                <span class="btn-ghost is-disabled" aria-hidden="true">Older →</span>
+                {% endif %}
+            </nav>
+            {% endif %}
+        </div>
+
+        {% endif %}
+
+    </div>
+</section>
+
+{% endblock %}

@@ -32,10 +32,10 @@
                 </div>
             </dl>
 
-            <form method="POST" action="{{ url_for('delete_expense', id=expense.id) }}">
+            <form method="POST" action="{{ action }}">
                 <button type="submit" class="btn-submit btn-danger">Delete expense</button>
             </form>
-            <a href="{{ url_for('profile') }}" class="btn-ghost btn-block">Cancel</a>
+            <a href="{{ back_url }}" class="btn-ghost btn-block">Cancel</a>
         </div>
 
     </div>

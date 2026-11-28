@@ -93,7 +93,9 @@ def validate_expense_form(form):
     return values, None
 
 
-def render_expense_form(heading, submit_label, action, values, error=None, delete_url=None):
+def render_expense_form(
+    heading, submit_label, action, values, error=None, delete_url=None, back_url=None
+):
     """Render expense_form.html, shared by the add and edit pages."""
     return render_template(
         "expense_form.html",
@@ -105,6 +107,7 @@ def render_expense_form(heading, submit_label, action, values, error=None, delet
         error=error,
         today=date.today().isoformat(),
         delete_url=delete_url,
+        back_url=back_url or url_for("profile"),
     )
 
 
@@ -301,12 +304,77 @@ def get_own_expense_or_404(conn, expense_id):
     return expense
 
 
+def get_next_param():
+    """The page to return to after add/edit/delete (?next=), or None.
+
+    Only same-site paths are accepted ("/expenses?page=2"). Anything that
+    could point to another site ("https://evil.com", "//evil.com", "/\\evil.com",
+    or paths with whitespace that browsers strip) is ignored, so ?next= can't
+    be abused as an open redirect. Callers fall back to the profile on None;
+    url_for() drops next=None, so links stay clean when there's no ?next=.
+    """
+    target = request.args.get("next", "")
+    if (
+        target.startswith("/")
+        and not target.startswith("//")
+        and not any(c == "\\" or ord(c) < 33 for c in target)
+    ):
+        return target
+    return None
+
+
+PER_PAGE = 20
+
+
+@app.route("/expenses")
+@login_required
+def list_expenses():
+    user_id = session["user_id"]
+    conn = get_db()
+
+    totals = conn.execute(
+        "SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total "
+        "FROM expenses WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+
+    pages = max(1, math.ceil(totals["count"] / PER_PAGE))
+    # Clamp out-of-range pages, e.g. after deleting the last item on the last page.
+    page = min(max(request.args.get("page", 1, type=int), 1), pages)
+
+    expenses = conn.execute(
+        "SELECT id, amount, category, date, description "
+        "FROM expenses WHERE user_id = ? "
+        "ORDER BY date DESC, id DESC LIMIT ? OFFSET ?",
+        (user_id, PER_PAGE, (page - 1) * PER_PAGE),
+    ).fetchall()
+    conn.close()
+
+    return render_template(
+        "expenses.html",
+        expenses=expenses,
+        count=totals["count"],
+        total=totals["total"],
+        page=page,
+        pages=pages,
+        first_index=(page - 1) * PER_PAGE + 1,
+        back_url=url_for("list_expenses", page=page) if page > 1 else url_for("list_expenses"),
+    )
+
+
 @app.route("/expenses/add", methods=["GET", "POST"])
 @login_required
 def add_expense():
+    next_url = get_next_param()
+
     def show_form(values, error=None):
         return render_expense_form(
-            "Add an expense", "Add expense", url_for("add_expense"), values, error
+            "Add an expense",
+            "Add expense",
+            url_for("add_expense", next=next_url),
+            values,
+            error,
+            back_url=next_url or url_for("profile"),
         )
 
     if request.method == "GET":
@@ -332,7 +400,7 @@ def add_expense():
     conn.close()
 
     flash(f"Added {format_inr(values['amount'])} for {values['category']}.")
-    return redirect(url_for("profile"))
+    return redirect(next_url or url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/edit", methods=["GET", "POST"])
@@ -340,15 +408,17 @@ def add_expense():
 def edit_expense(id):
     conn = get_db()
     expense = get_own_expense_or_404(conn, id)
+    next_url = get_next_param()
 
     def show_form(values, error=None):
         return render_expense_form(
             "Edit expense",
             "Save changes",
-            url_for("edit_expense", id=id),
+            url_for("edit_expense", id=id, next=next_url),
             values,
             error,
-            delete_url=url_for("delete_expense", id=id),
+            delete_url=url_for("delete_expense", id=id, next=next_url),
+            back_url=next_url or url_for("profile"),
         )
 
     if request.method == "GET":
@@ -381,7 +451,7 @@ def edit_expense(id):
     conn.close()
 
     flash(f"Updated expense: {format_inr(values['amount'])} for {values['category']}.")
-    return redirect(url_for("profile"))
+    return redirect(next_url or url_for("profile"))
 
 
 @app.route("/expenses/<int:id>/delete", methods=["GET", "POST"])
@@ -389,13 +459,19 @@ def edit_expense(id):
 def delete_expense(id):
     conn = get_db()
     expense = get_own_expense_or_404(conn, id)
+    next_url = get_next_param()
 
     # GET only shows a confirmation page; nothing is deleted until the
     # user submits its form. Deleting on GET would let link prefetching
     # or a link on another site remove data.
     if request.method == "GET":
         conn.close()
-        return render_template("delete_expense.html", expense=expense)
+        return render_template(
+            "delete_expense.html",
+            expense=expense,
+            action=url_for("delete_expense", id=id, next=next_url),
+            back_url=next_url or url_for("profile"),
+        )
 
     conn.execute(
         "DELETE FROM expenses WHERE id = ? AND user_id = ?",
@@ -405,7 +481,7 @@ def delete_expense(id):
     conn.close()
 
     flash(f"Deleted {format_inr(expense['amount'])} for {expense['category']}.")
-    return redirect(url_for("profile"))
+    return redirect(next_url or url_for("profile"))
 
 
 if __name__ == "__main__":
